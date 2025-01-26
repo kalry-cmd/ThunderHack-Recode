@@ -1,0 +1,74 @@
+package thunder.hack.features.modules.render;
+
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.entity.FallingBlockEntity;
+import net.minecraft.network.packet.s2c.play.BlockUpdateS2CPacket;
+import net.minecraft.network.packet.s2c.play.ChunkDeltaUpdateS2CPacket;
+import net.minecraft.util.math.BlockPos;
+import thunder.hack.features.modules.Module;
+import thunder.hack.setting.Setting;
+import thunder.hack.setting.impl.ColorSetting;
+import thunder.hack.utility.Timer;
+import thunder.hack.utility.render.Render3DEngine;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.stream.Collectors;
+
+public class ProphuntESP extends Module {
+
+    private final Setting<ColorSetting> color = new Setting<>("Color", new ColorSetting(0xFFFFB348));
+    private final List<BlockPos> trackedBlocks = new CopyOnWriteArrayList<>();
+    private final Timer renderTimer = new Timer();
+
+    public ProphuntESP() {
+        super("ProphuntESP", Category.RENDER);
+    }
+
+    @Override
+    public void onEnable() {
+        trackedBlocks.clear();
+    }
+
+    @Override
+    public void onDisable() {
+        trackedBlocks.clear();
+    }
+
+    @Override
+    public void onUpdate() {
+        if (fullNullCheck()) return;
+
+        List<FallingBlockEntity> fallingBlocks = mc.world.getEntities().stream()
+                .filter(FallingBlockEntity.class::isInstance)
+                .map(FallingBlockEntity.class::cast)
+                .collect(Collectors.toList());
+
+        for (FallingBlockEntity block : fallingBlocks) {
+            trackedBlocks.add(block.getBlockPos());
+        }
+    }
+
+    @Override
+    public void onPacketReceive(Object packet) {
+        if (packet instanceof BlockUpdateS2CPacket) {
+            BlockUpdateS2CPacket blockUpdatePacket = (BlockUpdateS2CPacket) packet;
+            trackedBlocks.add(blockUpdatePacket.getPos());
+        } else if (packet instanceof ChunkDeltaUpdateS2CPacket) {
+            ChunkDeltaUpdateS2CPacket chunkDeltaPacket = (ChunkDeltaUpdateS2CPacket) packet;
+            chunkDeltaPacket.visitUpdates((pos, state) -> trackedBlocks.add(pos.toImmutable()));
+        }
+    }
+
+    @Override
+    public void onRender3D(MatrixStack stack) {
+        if (fullNullCheck() || trackedBlocks.isEmpty() || !renderTimer.passedMs(50)) return;
+
+        for (BlockPos pos : trackedBlocks) {
+            Render3DEngine.renderBoxOutline(stack, pos, color.getValue().getColorObject(), 2f);
+        }
+
+        renderTimer.reset();
+    }
+}
